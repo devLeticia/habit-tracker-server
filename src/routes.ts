@@ -70,4 +70,89 @@ export async function appRoutes(app: FastifyInstance) {
 
     return { possibleHabits, completedHabit }
   })
+
+  // check and uncheck an habit
+  app.patch('/habits/:id/toggle', async (request) => {
+    // route param -> identification
+    // 1. we could receive a date here, but we wont because of 2.
+    const togglehabitParams = z.object({
+      id: z.string().uuid(),
+    })
+
+    const { id } = togglehabitParams.parse(request.params)
+
+    // 2. in this case we will only allow the current day habit to be toggled
+    const today = dayjs().startOf('day').toDate()
+
+    let day = await prisma.day.findUnique({
+      where: {
+        date: today,
+      },
+    })
+
+    if (!day) {
+      day = await prisma.day.create({
+        data: {
+          date: today,
+        },
+      })
+    }
+
+    const dayHabit = await prisma.dayHabit.findUnique({
+      where: {
+        day_id_habit_id: {
+          day_id: day.id,
+          habit_id: id,
+        },
+      },
+    })
+
+    if (dayHabit) {
+      // remove completed check
+      await prisma.dayHabit.delete({
+        where: {
+          id: dayHabit.id,
+        },
+      })
+    } else {
+      // else check for the first time
+      await prisma.dayHabit.create({
+        data: {
+          day_id: day.id,
+          habit_id: id,
+        },
+      })
+    }
+  })
+
+  app.get('/summary', async () => {
+    // query mais complexa, mais condições e relacionamentos
+    // o melhor é recorrer ao SQL na mão (raw), dar mais possiblidade de otimizar a busca no banco
+    // Raw SQL - a query só vai funcionar no SQLite
+
+    const summary = await prisma.$queryRaw`
+      SELECT 
+        D.id,
+        D.date,
+        (
+          SELECT 
+            cast(count(*) as float)
+          FROM day_habits DH
+          WHERE DH.day_id = D.id 
+        ) as completed,
+        (
+          SELECT 
+            cast(count(*) as float)
+          FROM habbit_week_days HWD
+          JOIN habits H
+            ON H.id = HWD.habit_id
+          WHERE 
+            HWD.week_day = cast(strftime('%w', D.date/1000.0, 'unixepoch') as int)
+            AND H.created_at <= D.date
+        ) as amount
+        
+      FROM days D
+    `
+    return summary
+  })
 }
