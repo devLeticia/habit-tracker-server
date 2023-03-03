@@ -6,7 +6,7 @@ import { initializeApp } from 'firebase-admin/app'
 const app = fastify()
 
 const admin = require('firebase-admin')
-const serviceAccount = require('path/to/serviceAccountKey.json')
+const serviceAccount = require('../config/fbServiceAccountKey.json')
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 })
@@ -19,20 +19,21 @@ app.register(cors)
 let authorized = true
 
 function checkAuth(req: any, res: any) {
-  if (req.headers.authtoken) {
+  const { authtoken } = req.headers
+  console.log('TOKEN NO BACKEND',authtoken)
     admin
       .auth()
-      .verifyIdToken(req.headers.authtoken)
-      .then(() => {
-        console.log('verificado, ok')
+      .verifyIdToken(authtoken)
+      .then((res: any) => {
+        console.log('verificado, ok:', res)
       })
       .catch(() => {
+        console.log('entrou no server, mas ao autorizou')
         res.status(403).send('Unauthorized')
       })
-  } else {
-    res.status(403).send('Unauthorized')
-  }
+
 }
+
 app.addHook('preHandler', async (request, response) => {
   // validação global das rotas desse arquivo.
   checkAuth(request, response)
